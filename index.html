@@ -1,1 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFmpeg Studio Ultimate</title>
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.96);
+            --glass-border: rgba(255, 255, 255, 0.6);
+            --shadow-lg: 0 30px 80px -10px rgba(0, 0, 0, 0.15);
+            --accent: #5e6ad2;
+            --accent-hover: #4b55b0;
+            --success: #00b894;
+            --error: #ff7675;
+            --text-main: #2d3436;
+            --text-sub: #636e72;
+            --radius-main: 24px;
+            --radius-sm: 12px;
+        }
 
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; }
+
+        body {
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, #f3f4f6 0%, #dfe6e9 100%);
+            color: var(--text-main);
+        }
+
+        .orb { position: absolute; border-radius: 50%; filter: blur(80px); z-index: -1; opacity: 0.6; }
+        .orb-1 { top: -10%; left: -10%; width: 500px; height: 500px; background: #dce1ff; }
+        .orb-2 { bottom: -10%; right: -10%; width: 400px; height: 400px; background: #e0f7fa; }
+
+        /* 主窗口 */
+        .app-window {
+            width: 720px;
+            height: 85vh;
+            max-height: 860px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-main);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            padding: 32px;
+            gap: 0;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 展开总宽度 */
+        .app-window.expanded { width: 1150px; gap: 40px; }
+
+        /* 左侧面板 */
+        .panel-left {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* 默认展开时：左侧保持较宽 (因为右侧是窄模式) */
+        .app-window.expanded .panel-left { flex: 1; }
+
+        /* 当右侧全屏变宽时：左侧才变窄 */
+        .app-window.expanded.full-code-mode .panel-left { flex: 0 0 420px; }
+
+
+        /* 右侧面板 */
+        .panel-right {
+            width: 0; flex: 0; opacity: 0;
+            display: flex; flex-direction: column; gap: 15px;
+            transform: translateX(40px);
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow: hidden;
+        }
+
+        /* 默认展开时：右侧是窄模式 (固定340px) */
+        .app-window.expanded .panel-right { flex: 0 0 340px; opacity: 1; transform: translateX(0); }
+
+        /* 当右侧切换为全屏模式时：右侧占据主要空间 */
+        .app-window.expanded.full-code-mode .panel-right { flex: 1; }
+
+
+        h1 { font-size: 22px; font-weight: 700; color: #2d3436; display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+        .logo-icon { width: 24px; height: 24px; background: linear-gradient(135deg, var(--accent), #a29bfe); border-radius: 8px; display: inline-block; }
+
+        /* === 一体化地址栏 === */
+        .address-bar {
+            display: flex; align-items: center;
+            background: #fff;
+            border: 2px solid transparent;
+            border-radius: var(--radius-sm);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+            padding: 6px;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .address-bar:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px rgba(108, 92, 231, 0.15);
+        }
+
+        .address-bar.error { border-color: var(--error); background: #fff5f5; }
+        .address-bar.valid { border-color: var(--success); }
+
+        .icon-folder { padding: 0 10px; font-size: 16px; color: #b2bec3; }
+
+        .input-path {
+            flex: 1; border: none; outline: none; background: transparent;
+            padding: 8px 0; font-family: "SF Mono", monospace; font-size: 13px; color: #333;
+            min-width: 100px;
+        }
+        .input-path::placeholder { color: #b2bec3; font-family: -apple-system, sans-serif; }
+
+        .divider { padding: 0 8px; color: #dfe6e9; font-weight: 300; font-size: 20px; }
+
+        .input-filename {
+            width: 160px;
+            border: none; outline: none; background: rgba(0,0,0,0.03);
+            padding: 6px 10px; border-radius: 6px;
+            font-family: "SF Mono", monospace; font-size: 12px; color: var(--accent); font-weight: 600;
+            transition: all 0.2s;
+        }
+        .input-filename:focus { background: #ececf5; width: 200px; color: #333; }
+
+        .input-filename:read-only {
+            background: transparent; color: #b2bec3; font-style: italic; cursor: default;
+        }
+
+        .status-badge {
+            margin-left: 15px; margin-right: 4px;
+            font-size: 11px; font-weight: 600; color: #b2bec3;
+            white-space: nowrap; display: flex; align-items: center; gap: 4px;
+        }
+        .status-badge.valid { color: var(--success); }
+        .status-badge.invalid { color: var(--error); }
+
+        /* 文件列表拖拽区 */
+        .drop-zone {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.5);
+            border: 2px dashed rgba(0,0,0,0.1);
+            border-radius: var(--radius-sm);
+            position: relative; overflow-y: auto; cursor: pointer; transition: all 0.2s;
+        }
+        .drop-zone:hover { background: rgba(255,255,255,0.8); border-color: rgba(108, 92, 231, 0.3); }
+        .drop-zone.drag-over { border-color: var(--accent); background: rgba(108, 92, 231, 0.05); }
+
+        .empty-state { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #a4b0be; pointer-events: none; }
+        .empty-icon { font-size: 42px; margin-bottom: 8px; opacity: 0.5; display: block; }
+
+        .file-list { padding: 10px; list-style: none; }
+        .file-item {
+            background: #fff; margin-bottom: 8px; padding: 10px; border-radius: 8px;
+            display: flex; align-items: center; gap: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04); transition: transform 0.2s; cursor: grab;
+        }
+        .file-item:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.08); }
+
+        .file-name { font-size: 11px; color: #aaa; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .chapter-input {
+            width: 140px; border: 1px solid transparent; border-radius: 4px;
+            font-size: 13px; font-weight: 600; color: #2d3436;
+            background: rgba(0,0,0,0.03); outline: none; padding: 4px 8px; text-align: right;
+            transition: all 0.2s;
+        }
+        .chapter-input:focus { background: #fff; border-color: var(--accent); width: 180px; }
+
+        .del-btn { color: #ff7675; cursor: pointer; opacity: 0.6; padding: 4px; font-size: 16px; }
+        .del-btn:hover { opacity: 1; }
+
+        /* 底部控制栏 */
+        .controls { display: flex; flex-direction: column; gap: 12px; }
+        .tools-header { display: flex; justify-content: space-between; align-items: center; }
+        .count-tag { font-size: 11px; font-weight: 600; background: #dfe4ea; color: #636e72; padding: 4px 10px; border-radius: 100px; }
+
+        .mode-tabs { display: flex; background: #e8ebf0; padding: 4px; border-radius: 12px; }
+        .tab {
+            flex: 1; border: none; background: none; padding: 10px; border-radius: 9px;
+            font-size: 12px; font-weight: 500; color: #636e72; cursor: pointer; transition: all 0.2s;
+        }
+        .tab.active { background: #fff; color: var(--accent); font-weight: 700; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+
+        /* 右侧代码区 */
+        .preview-header { font-size: 13px; font-weight: 600; color: #2d3436; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+
+        .toggle-view-btn {
+            background: rgba(0,0,0,0.05); border: none; border-radius: 6px;
+            width: 24px; height: 24px; cursor: pointer; color: #636e72;
+            display: flex; justify-content: center; align-items: center;
+            transition: all 0.2s; font-size: 16px;
+        }
+        .toggle-view-btn:hover { background: rgba(0,0,0,0.1); color: var(--accent); }
+
+        .code-editor {
+            flex: 1; width: 100%; background: #282c34; color: #a9ff68; border-radius: 12px; padding: 20px;
+            font-family: "SF Mono", "Menlo", monospace; font-size: 11px; line-height: 1.5;
+            resize: none; border: none; outline: none; white-space: pre;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .copy-btn {
+            width: 100%; padding: 16px; background: var(--accent); border: none; border-radius: 12px;
+            color: white; font-size: 15px; font-weight: 600; letter-spacing: 0.5px;
+            cursor: pointer; transition: all 0.2s; box-shadow: 0 6px 20px rgba(108, 92, 231, 0.3);
+        }
+        .copy-btn:hover { background: var(--accent-hover); transform: translateY(-2px); }
+        .copy-btn:active { transform: scale(0.98); }
+        .copy-btn.disabled { background: #b2bec3; cursor: not-allowed; box-shadow: none; transform: none; }
+
+    </style>
+</head>
+<body>
+
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <input type="file" id="fileInput" multiple style="display:none">
+
+    <div class="app-window" id="appWindow">
+
+        <div class="panel-left">
+            <h1><span class="logo-icon"></span> FFmpeg Studio</h1>
+
+            <div class="address-bar" id="addressBar">
+                <span class="icon-folder">📂</span>
+
+                <input type="text" class="input-path" id="workPath"
+                       placeholder="粘贴 Finder 路径 (Option+Cmd+C)..."
+                       autocomplete="off">
+
+                <span class="divider">/</span>
+
+                <input type="text" class="input-filename" id="outputName"
+                       value="merged_output.mkv"
+                       placeholder="输出文件名">
+
+                <span class="status-badge" id="pathStatus"></span>
+            </div>
+
+            <div class="drop-zone" id="dropZone">
+                <div class="empty-state" id="emptyState">
+                    <span class="empty-icon">📥</span>
+                    <p>点击或拖入文件</p>
+                </div>
+                <ul class="file-list" id="fileList"></ul>
+            </div>
+
+            <div class="controls">
+                <div class="tools-header">
+                    <span class="count-tag" id="countLabel">0 items</span>
+                </div>
+                <div class="mode-tabs">
+                    <button class="tab active" onclick="setMode(0)">合并+章节</button>
+                    <button class="tab" onclick="setMode(1)">转 MP3</button>
+                    <button class="tab" onclick="setMode(2)">嵌字幕</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-right">
+            <div class="preview-header">
+                <div style="display:flex; gap:8px; align-items:center">
+                    <span>Terminal Script</span>
+                    <span style="opacity:0.5; font-weight:400; font-size:11px">Bash</span>
+                </div>
+                <button class="toggle-view-btn" id="toggleBtn" onclick="toggleCodeView()" title="切换视图">⤢</button>
+            </div>
+            <textarea id="previewBox" class="code-editor" readonly></textarea>
+            <button class="copy-btn disabled" id="copyBtn" onclick="copyCommand()">等待输入...</button>
+        </div>
+
+    </div>
+
+    <script>
+        let files = [];
+        let currentMode = 0;
+        let isFullCodeMode = false; // 默认窄模式
+
+        // DOM Elements
+        const appWindow = document.getElementById('appWindow');
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileListEl = document.getElementById('fileList');
+        const emptyState = document.getElementById('emptyState');
+        const countLabel = document.getElementById('countLabel');
+
+        const addressBar = document.getElementById('addressBar');
+        const pathInput = document.getElementById('workPath');
+        const outputNameInput = document.getElementById('outputName');
+        const pathStatus = document.getElementById('pathStatus');
+
+        const previewBox = document.getElementById('previewBox');
+        const copyBtn = document.getElementById('copyBtn');
+        const toggleBtn = document.getElementById('toggleBtn');
+
+        // Listeners
+        pathInput.addEventListener('input', validateAndCheck);
+        outputNameInput.addEventListener('input', validateAndCheck);
+
+        dropZone.addEventListener('click', (e) => {
+            if (e.target.closest('.file-item') || e.target.closest('.del-btn') || e.target.closest('.chapter-input')) return;
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const newFiles = Array.from(e.target.files).filter(f => !f.name.startsWith('.'));
+            processFiles(newFiles);
+            fileInput.value = '';
+        });
+
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            const newFiles = Array.from(e.dataTransfer.files).filter(f => !f.name.startsWith('.'));
+            processFiles(newFiles);
+        });
+
+        function processFiles(newFiles) {
+            if (newFiles.length === 0) return;
+            newFiles.forEach(f => {
+                files.push({
+                    name: f.name,
+                    userTitle: f.name.replace(/\.[^/.]+$/, "")
+                });
+            });
+            updateUI();
+        }
+
+        function updateUI() {
+            if (files.length === 0) {
+                emptyState.style.display = 'block';
+                fileListEl.innerHTML = '';
+            } else {
+                emptyState.style.display = 'none';
+                renderList();
+            }
+            countLabel.textContent = `${files.length} items`;
+            validateAndCheck();
+        }
+
+        function renderList() {
+            fileListEl.innerHTML = '';
+            files.forEach((file, index) => {
+                const li = document.createElement('li');
+                li.className = 'file-item';
+                li.draggable = true;
+                li.dataset.index = index;
+                li.innerHTML = `
+                    <div style="color:#b2bec3; cursor:grab; font-size:14px">☰</div>
+                    <div class="file-name" title="${file.name}">${file.name}</div>
+                    <input type="text" class="chapter-input" value="${file.userTitle}"
+                           oninput="updateTitle(${index}, this.value)" placeholder="Title">
+                    <div class="del-btn" onclick="removeFile(${index})">×</div>
+                `;
+                li.addEventListener('dragstart', dragStart);
+                li.addEventListener('dragover', dragOver);
+                li.addEventListener('drop', drop);
+                fileListEl.appendChild(li);
+            });
+        }
+
+        function validateAndCheck() {
+            let path = pathInput.value.trim().replace(/\/$/, '');
+            let outputName = outputNameInput.value.trim();
+            const hasFiles = files.length > 0;
+
+            const isPathValid = path.length > 0 && (/^(\/|[a-zA-Z]:)/.test(path));
+
+            if (isPathValid) {
+                addressBar.classList.remove('error');
+                addressBar.classList.add('valid');
+                pathStatus.textContent = "✅ 有效";
+                pathStatus.className = "status-badge valid";
+            } else {
+                addressBar.classList.remove('valid');
+                if (path.length > 0) {
+                    addressBar.classList.add('error');
+                    pathStatus.textContent = "🚫 无效";
+                    pathStatus.className = "status-badge invalid";
+                } else {
+                    addressBar.classList.remove('error');
+                    pathStatus.textContent = "";
+                    pathStatus.className = "status-badge";
+                }
+            }
+
+            // 展开逻辑
+            const isOutputValid = (currentMode === 0 && outputName.length > 0) || currentMode !== 0;
+
+            if (isPathValid && hasFiles && isOutputValid) {
+                appWindow.classList.add('expanded');
+
+                // 确保状态正确同步
+                if (isFullCodeMode) {
+                    appWindow.classList.add('full-code-mode');
+                    toggleBtn.innerText = "⤡"; // 缩小图标
+                } else {
+                    appWindow.classList.remove('full-code-mode');
+                    toggleBtn.innerText = "⤢"; // 展开图标
+                }
+
+                copyBtn.classList.remove('disabled');
+                copyBtn.textContent = "复制命令代码";
+                generatePreview(path, outputName);
+            } else {
+                appWindow.classList.remove('expanded');
+                appWindow.classList.remove('full-code-mode');
+                // 不重置 isFullCodeMode，保留用户偏好
+                copyBtn.classList.add('disabled');
+                copyBtn.textContent = isPathValid ? "等待添加文件..." : "请先输入正确路径";
+            }
+        }
+
+        // 视图切换逻辑 (默认窄 -> 点击变宽)
+        function toggleCodeView() {
+            isFullCodeMode = !isFullCodeMode;
+            if (isFullCodeMode) {
+                appWindow.classList.add('full-code-mode');
+                toggleBtn.innerText = "⤡";
+            } else {
+                appWindow.classList.remove('full-code-mode');
+                toggleBtn.innerText = "⤢";
+            }
+        }
+
+        function updateTitle(index, val) { files[index].userTitle = val; validateAndCheck(); }
+        function removeFile(index) { files.splice(index, 1); updateUI(); }
+
+        // 拖拽排序
+        let dragSrcEl = null;
+        function dragStart(e) { dragSrcEl = this; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/html', this.innerHTML); }
+        function dragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; return false; }
+        function drop(e) {
+            e.stopPropagation();
+            if (dragSrcEl !== this) {
+                const oldIndex = parseInt(dragSrcEl.dataset.index);
+                const newIndex = parseInt(this.dataset.index);
+                const item = files.splice(oldIndex, 1)[0];
+                files.splice(newIndex, 0, item);
+                updateUI();
+            }
+            return false;
+        }
+
+        function setMode(m) {
+            currentMode = m;
+            document.querySelectorAll('.tab').forEach((btn, idx) => { btn.classList.toggle('active', idx === m); });
+
+            if (m === 0) {
+                outputNameInput.readOnly = false;
+                outputNameInput.value = "merged_output.mkv";
+            } else if (m === 1) {
+                outputNameInput.readOnly = true;
+                outputNameInput.value = "[同名].mp3";
+            } else if (m === 2) {
+                outputNameInput.readOnly = true;
+                outputNameInput.value = "[同名]_sub.mkv";
+            }
+
+            validateAndCheck();
+        }
+
+        function generatePreview(path, outputName) {
+            let cmd = `cd "${path}" && cat << 'EOF_SCRIPT' > .temp_run.sh\n`;
+            cmd += `#!/bin/bash\n`;
+
+            if (currentMode === 0) {
+                if (!outputName) outputName = "merged_output.mkv";
+                cmd += `
+echo "" > inputs.txt
+echo ";FFMETADATA1" > metadata.txt
+curr=0
+
+add_chapter() {
+    f="$1"
+    t="$2"
+    if [ ! -f "$f" ]; then
+        echo "❌ 错误: 找不到文件 '$f'"
+        exit 1
+    fi
+    echo "file '$f'" >> inputs.txt
+    dur=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$f")
+    if [ -z "$dur" ]; then dur=0; fi
+    next=$(echo "$curr + $dur" | bc)
+    echo "[CHAPTER]" >> metadata.txt
+    echo "TIMEBASE=1/1" >> metadata.txt
+    echo "START=$curr" >> metadata.txt
+    echo "END=$next" >> metadata.txt
+    echo "title=$t" >> metadata.txt
+    curr=$next
+}
+\n`;
+                files.forEach(f => {
+                    const safeName = f.name.replace(/"/g, '\\"').replace(/\$/g, '\\$');
+                    const safeTitle = f.userTitle.replace(/"/g, '\\"').replace(/\$/g, '\\$');
+                    cmd += `add_chapter "${safeName}" "${safeTitle}"\n`;
+                });
+                cmd += `
+ffmpeg -f concat -safe 0 -i inputs.txt -i metadata.txt -map_metadata 1 -c copy "${outputName}"
+rm inputs.txt metadata.txt
+echo "✅ 合并完成: ${outputName}"
+`;
+            } else if (currentMode === 1) {
+                files.forEach(f => {
+                    const safeName = f.name.replace(/"/g, '\\"');
+                    const nameNoExt = f.name.replace(/\.[^/.]+$/, "").replace(/"/g, '\\"');
+                    cmd += `if [ -f "${safeName}" ]; then\n`;
+                    cmd += `  ffmpeg -i "${safeName}" -q:a 0 -map a "${nameNoExt}.mp3"\n`;
+                    cmd += `else echo "❌ 找不到: ${safeName}"; fi\n`;
+                });
+                cmd += `echo "✅ MP3转换完成 (同目录下)"\n`;
+            } else if (currentMode === 2) {
+                files.forEach(f => {
+                    const safeName = f.name.replace(/"/g, '\\"');
+                    const nameNoExt = f.name.replace(/\.[^/.]+$/, "").replace(/"/g, '\\"');
+                    cmd += `if [ -f "${safeName}" ]; then\n`;
+                    cmd += `  if [ -f "${nameNoExt}.srt" ]; then\n`;
+                    cmd += `    ffmpeg -i "${safeName}" -i "${nameNoExt}.srt" -c copy -c:s srt "${nameNoExt}_sub.mkv"\n`;
+                    cmd += `  else echo "⚠️ 无字幕: ${nameNoExt}.srt"; fi\n`;
+                    cmd += `else echo "❌ 找不到: ${safeName}"; fi\n`;
+                });
+                cmd += `echo "✅ 字幕封装完成 (同目录下)"\n`;
+            }
+
+            cmd += `EOF_SCRIPT\n`; 
+            cmd += `bash .temp_run.sh && rm .temp_run.sh`;
+
+            previewBox.value = cmd;
+        }
+
+        function copyCommand() {
+            if (copyBtn.classList.contains('disabled')) return;
+            previewBox.select();
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+            
+            const originalText = copyBtn.innerText;
+            copyBtn.innerText = "✓ 复制成功";
+            copyBtn.style.background = "#00b894";
+            setTimeout(() => {
+                copyBtn.innerText = originalText;
+                copyBtn.style.background = "";
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
